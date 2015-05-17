@@ -1,0 +1,20 @@
+{
+    "artist":   "Example Artist",
+    "title":    "Example Song 2",
+    "tuning":   "Tuning: EAdgbe'",
+    "composer": "",
+    "content":  r"""
+        \beginverse*
+            \[Am]Lorem ipsum dolor sit amet, consetetur sadipscing elitr,
+            \[C]sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat,
+            \[D]sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.
+            \[Em]Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        \endverse
+        \beginchorus
+            \[G]Lorem ipsum dolor sit amet, consetetur sadipscing elitr,
+            \[C]sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat,
+            \[D]sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.
+            \[G]Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        \endchorus
+    """
+}

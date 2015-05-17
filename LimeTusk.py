@@ -28,6 +28,12 @@ class BookElement(object):
                 return Song(init_data)
             except FileNotFoundError:
                 return None
+        elif object_str == "csong":
+            try:
+                init_data = BookElement._eval_file(data_path)
+                return CSong(init_data)
+            except FileNotFoundError:
+                return None
         elif object_str == "quote":
             try:
                 init_data = BookElement._eval_file(data_path)
@@ -84,8 +90,36 @@ class Song(BookElement):
         out = subprocess.check_output(cmd)
         out = out.decode('utf-8').replace('\n', '')
         return out
+
+class CSong(BookElement):
+    str_template = r"""
+        \begin{{songs}}{{}}
+        \beginsong{{{title}}}[
+          by={{{artist}}},
+          cr={{{composer}}},
+        ]
+            \musicnote{{{tuning}}}
         
-        
+            {content}
+        \endsong
+        \end{{songs}}
+    """
+
+    def __init__(self, init_data):
+        self.artist   = init_data["artist"]
+        self.title    = init_data["title"]
+        self.tuning   = init_data["tuning"]
+        self.composer = init_data["composer"]
+        self.content  = init_data["content"]
+
+    def latex_output(self):
+        return self.str_template.format(artist   = self.artist,
+                                         title    = self.title,
+                                         tuning   = self.tuning,
+                                         composer = self.composer,
+                                         content  = self.content)
+
+
 class Quote(BookElement):
     str_template = r"""
         \fquote{{{text}}}{{{source}}}
@@ -124,10 +158,10 @@ class Picture(BookElement):
 
 class Book(object):
     lytex_header = r"""
-        \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, ngerman, final]{scrbook}
+        \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, english, final]{scrbook}
         \usepackage[utf8]{inputenc}
         \usepackage[T1]{fontenc}
-        \usepackage[ngerman]{babel}
+        \usepackage[english]{babel}
         \usepackage{microtype}
         \usepackage{lmodern}
         \usepackage{needspace}
@@ -137,6 +171,7 @@ class Book(object):
             pdfpagemode={UseNone}, pdfpagelayout={TwoPageRight}, plainpages=false,
             pdfkeywords={}, pdfsubject={}, pdftitle={}, pdfauthor={},
         ]{hyperref}
+        \usepackage{songs}
         \usepackage{graphicx}
         \usepackage{etoolbox}
         \patchcmd{\quote}{\rightmargin}{\leftmargin 8em \rightmargin}{}{}
@@ -166,9 +201,9 @@ class Book(object):
             while the document itself is licensed under the Creative Commons BY-SA 3.0 license.
         }
         \begin{document}
-            \selectlanguage{ngerman}
             \maketitle
             \tableofcontents
+            \newpage
     """
 
     lytex_footer = r"""
