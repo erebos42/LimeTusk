@@ -218,9 +218,8 @@ def parse_cmd_options():
     parser.add_argument('--book', dest='book',     action='store', required=True)
     cmd_options = parser.parse_args()
     
-
-def tabbook_gen():
-    parse_cmd_options()
+    
+def generate_lytex():
     os.makedirs(cmd_options.out_path, exist_ok=True)
     book_path = os.path.join(cmd_options.in_path, cmd_options.book + ".book")
     book = Book(book_path)
@@ -229,6 +228,39 @@ def tabbook_gen():
         fd.write(book.latex_output())
 
 
+def generate_tex():
+    cmd = ["lilypond-book", "--pdf", "--loglevel=WARN", "--lily-loglevel=WARN", "--format=latex",
+           "--out="+cmd_options.out_path, os.path.join(cmd_options.out_path, cmd_options.book + ".lytex")]
+    subprocess.call(cmd)
+
+
+def compile_tex(draft=False):
+    if draft:
+        cmd = ["pdflatex", "-draftmode", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", cmd_options.book + ".tex"]
+    else:
+        cmd = ["pdflatex", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", cmd_options.book + ".tex"]
+    temp_env = os.environ.copy()
+    temp_env['TEXINPUTS'] = cmd_options.out_path + ":" + temp_env.get('TEXINPUTS', '')
+    subprocess.call(cmd, env=temp_env)
+
+
+def main():
+    parse_cmd_options()
+    print("Parsing book and converting songs...")
+    generate_lytex()
+    print("Generating book...")
+    generate_tex()
+    print("Compiling book...")
+    print("Run 1...")
+    compile_tex(draft=True)
+    print("Run 2...")
+    compile_tex(draft=True)
+    print("Run 3...")
+    compile_tex(draft=False)
+
+
 if __name__ == "__main__":
-    tabbook_gen()
+    main()
+
+
 
