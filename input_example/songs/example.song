@@ -2,6 +2,7 @@
     "artist":   "",
     "title":    "Example Song",
     "tuning":   "Tuning: EAdgbe'",
+    "album":    "",
     "composer": "",
     "tg_file":  "res/songs/example.tg"
 }

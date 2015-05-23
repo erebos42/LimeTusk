@@ -1,0 +1,65 @@
+\NeedsTeXFormat{LaTeX2e}[1994/06/01]
+\ProvidesPackage{limetusk}[2015/05/23 LimeTusk]
+
+\RequirePackage{calc}
+\RequirePackage{color}
+\RequirePackage{etoolbox}
+\RequirePackage{float}
+\RequirePackage{needspace}
+
+\definecolor{shade}{gray}{.80}
+\renewcommand{\thesection}{\arabic{section}}
+
+\patchcmd{\quote}{\rightmargin}{\leftmargin 8em \rightmargin}{}{}
+
+\newfloat{quote_float}{htb}{lop}
+\newcommand{\fquote}[2]{%
+    \begin{quote_float}%
+        \centering%
+        \rule{10cm}{.1pt}%
+        \begin{quote}%
+            \textit{#1}%
+            \begin{flushright}\textsc{#2}\end{flushright}%
+        \end{quote}%
+        \rule{10cm}{.1pt}%
+    \end{quote_float}%
+}
+
+\newlength{\numwidth}
+\newlength{\titleheight}
+\newlength{\titledepth}
+\newsavebox{\boxnumraw}
+\newsavebox{\boxtitle}
+\newsavebox{\boxnum}
+
+\newcommand{\songheader}[5]{%
+    \needspace{10\baselineskip}%
+    \stepcounter{section}%
+    \settowidth{\numwidth}{\sffamily\bfseries\LARGE 000}%
+    \savebox{\boxtitle}{%
+        \begin{minipage}[t]{\textwidth - \numwidth - \fboxsep - \fboxsep - 2pt}%
+            \sffamily\slshape\Large #1\\%
+            \slshape\small #2 \hfill #3\\%
+            \bfseries\small #4 \hfill #5%
+        \end{minipage}%
+    }%
+    \settoheight{\titleheight}{\usebox{\boxtitle}}%
+    \settodepth{\titledepth}{\usebox{\boxtitle}}%
+    \savebox{\boxnum}{%
+        \colorbox{shade}{%
+            \begin{minipage}[t][\titledepth + \titleheight]{\numwidth}%
+                \sffamily\bfseries\LARGE\thesection%
+            \end{minipage}%
+        }%
+    }%
+    \noindent%
+    \begin{minipage}{\textwidth}%
+        \vspace{2pt}%
+        \phantomsection%
+        \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#2 - #1}}%
+        \usebox{\boxnum}%
+        \hfill%
+        \usebox{\boxtitle}%
+        \vspace{2pt}%
+    \end{minipage}%
+}

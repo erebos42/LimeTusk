@@ -5,8 +5,10 @@ import argparse
 import subprocess
 import ast
 import os
+import shutil
 
 TG2LY_BIN = "bin/tg2ly_0_3_0.jar"
+LIMETUSK_STY = "bin/limetusk.sty"
 
 class BookElement(object):
     def latex_output(self):
@@ -64,13 +66,14 @@ class Chapter(BookElement):
 
 class Song(BookElement):
     str_template = r"""
-        \songheader{{{artist}}}{{{title}}}{{{tuning}}}{{{composer}}}
+        \songheader{{{title}}}{{{artist}}}{{{album}}}{{{tuning}}}{{{composer}}}
         \lilypondfile{{{path}}}
     """
 
     def __init__(self, init_data):
         self.artist   = init_data["artist"]
         self.title    = init_data["title"]
+        self.album    = init_data["album"]
         self.tuning   = init_data["tuning"]
         self.composer = init_data["composer"]
         self.file     = os.path.join(cmd_options.in_path, init_data["tg_file"])
@@ -82,6 +85,7 @@ class Song(BookElement):
         return self.str_template.format(artist   = self.artist,
                                          title    = self.title,
                                          tuning   = self.tuning,
+                                         album    = self.album,
                                          composer = self.composer,
                                          path     = os.path.join(cmd_options.out_path, self.hash + ".ly"))
 
@@ -158,42 +162,22 @@ class Picture(BookElement):
 
 class Book(object):
     lytex_header = r"""
-        \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, english, final]{scrbook}
+        \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, final]{scrbook}
         \usepackage[utf8]{inputenc}
         \usepackage[T1]{fontenc}
-        \usepackage[english]{babel}
+        \usepackage[ngerman, english]{babel}
         \usepackage{microtype}
         \usepackage{lmodern}
-        \usepackage{needspace}
         \usepackage[
             pdftex,
             bookmarks, bookmarksopen, bookmarksopenlevel=1, bookmarksnumbered=true,
             pdfpagemode={UseNone}, pdfpagelayout={TwoPageRight}, plainpages=false,
             pdfkeywords={}, pdfsubject={}, pdftitle={}, pdfauthor={},
         ]{hyperref}
-        \usepackage{songs}
         \usepackage{graphicx}
-        \usepackage{etoolbox}
-        \patchcmd{\quote}{\rightmargin}{\leftmargin 8em \rightmargin}{}{}
-        \usepackage{float}
-        \newfloat{quote_float}{htb}{lop}
-        \newcommand{\fquote}[2]{
-            \begin{quote_float}
-                \begin{quote}
-                    \textit{#1}
-                    \begin{flushright}\textsc{#2}\end{flushright}
-                \end{quote}
-            \end{quote_float}
-        }
-        \newcommand{\songheader}[4]{
-            \needspace{10\baselineskip}
-            \ifx&#1&%
-                \section{#2}
-            \else
-                \section{#1 - #2}      
-            \fi
-            {#3 \hfill #4 \par}
-        }
+        \usepackage{songs}
+        \usepackage{limetusk}
+        \usepackage{scrhack}
         \title{Tabbook}
         \author{}
         \lowertitleback{This document was created using LilyPond and {\LaTeX}/{\KOMAScript}.\\
@@ -202,8 +186,7 @@ class Book(object):
         }
         \begin{document}
             \maketitle
-            \tableofcontents
-            \newpage
+            \tableofcontents    
     """
 
     lytex_footer = r"""
@@ -264,6 +247,9 @@ def generate_lytex():
 
 
 def generate_tex():
+    # copy sty first, since lilypond-book tries to guess the textwidth
+    shutil.copy(LIMETUSK_STY, cmd_options.out_path)
+
     cmd = ["lilypond-book", "--pdf", "--loglevel=WARN", "--lily-loglevel=WARN", "--format=latex",
            "--out="+cmd_options.out_path, os.path.join(cmd_options.out_path, cmd_options.book + ".lytex")]
     subprocess.call(cmd)
