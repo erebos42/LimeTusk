@@ -5,7 +5,11 @@
 \RequirePackage{color}
 \RequirePackage{etoolbox}
 \RequirePackage{float}
+\RequirePackage{scrhack}
 \RequirePackage{needspace}
+\RequirePackage{chngcntr}
+
+\counterwithout{section}{chapter}
 
 \definecolor{shade}{gray}{.80}
 \renewcommand{\thesection}{\arabic{section}}

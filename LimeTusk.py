@@ -1,6 +1,12 @@
 #!/usr/bin/python3
 # -*- encoding: utf-8 -*-
 
+#
+# TODO
+# - Add debug option for LaTeX and LilyPond
+# - Add logging or something for warnings/errors
+#
+
 import argparse
 import subprocess
 import ast
@@ -10,55 +16,43 @@ import shutil
 TG2LY_BIN = "bin/tg2ly_0_3_0.jar"
 LIMETUSK_STY = "bin/limetusk.sty"
 
+class InvalidBookElementError(Exception):
+    pass
+
 class BookElement(object):
     def latex_output(self):
         raise NotImplementedError("please implement!")
 
     @classmethod
+    def get_keyword(self):
+        raise NotImplementedError("please implement!")
+
+    @classmethod
     def _eval_file(cls, path):
+        path = os.path.join(os.path.dirname(cmd_options.in_path), path)
         with open(path, 'r') as fd:
             return ast.literal_eval(fd.read().strip())
 
     @classmethod
     def factory(cls, object_str, init_data):
-        data_path = os.path.join(cmd_options.in_path, init_data)
-        if object_str == "chapter":
-            return Chapter(init_data)
-        elif object_str == "song":
-            try:
-                init_data = BookElement._eval_file(data_path)
-                return Song(init_data)
-            except FileNotFoundError:
-                return None
-        elif object_str == "csong":
-            try:
-                init_data = BookElement._eval_file(data_path)
-                return CSong(init_data)
-            except FileNotFoundError:
-                return None
-        elif object_str == "quote":
-            try:
-                init_data = BookElement._eval_file(data_path)
-                return Quote(init_data)
-            except FileNotFoundError:
-                return None
-        elif object_str == "pic":
-            try:
-                init_data = BookElement._eval_file(data_path)
-                return Picture(init_data)
-            except FileNotFoundError:
-                return None
-        else:
-            return None
-
+        for e in BookElement.__subclasses__():
+            if e.get_keyword() == object_str:
+                return e(init_data)
+        raise InvalidBookElementError("keyword not found")
 
 class Chapter(BookElement):
     str_template = r"""
-        \chapter{{{chapter_name}}}
+        \chapter*{{{chapter_name}}}
+        \addcontentsline{{toc}}{{chapter}}{{{chapter_name}}}
     """
 
     def __init__(self, init_data):
         self.text = init_data
+        super(Chapter, self).__init__()
+
+    @classmethod
+    def get_keyword(self):
+        return "chapter"
 
     def latex_output(self):
         return self.str_template.format(chapter_name=self.text)
@@ -71,15 +65,21 @@ class Song(BookElement):
     """
 
     def __init__(self, init_data):
+        init_data = BookElement._eval_file(init_data)
         self.artist   = init_data["artist"]
         self.title    = init_data["title"]
         self.album    = init_data["album"]
         self.tuning   = init_data["tuning"]
         self.composer = init_data["composer"]
-        self.file     = os.path.join(cmd_options.in_path, init_data["tg_file"])
+        self.file     = os.path.join(os.path.dirname(cmd_options.in_path), init_data["tg_file"])
         if not os.path.exists(self.file):
             raise FileNotFoundError
         self.hash = self.convert()
+        super(Song, self).__init__()
+
+    @classmethod
+    def get_keyword(self):
+        return "song"
 
     def latex_output(self):
         return self.str_template.format(artist   = self.artist,
@@ -94,6 +94,7 @@ class Song(BookElement):
         out = subprocess.check_output(cmd)
         out = out.decode('utf-8').replace('\n', '')
         return out
+
 
 class CSong(BookElement):
     str_template = r"""
@@ -110,11 +111,17 @@ class CSong(BookElement):
     """
 
     def __init__(self, init_data):
+        init_data = BookElement._eval_file(init_data)
         self.artist   = init_data["artist"]
         self.title    = init_data["title"]
         self.tuning   = init_data["tuning"]
         self.composer = init_data["composer"]
         self.content  = init_data["content"]
+        super(CSong, self).__init__()
+
+    @classmethod
+    def get_keyword(self):
+        return "csong"
 
     def latex_output(self):
         return self.str_template.format(artist   = self.artist,
@@ -130,8 +137,14 @@ class Quote(BookElement):
     """
 
     def __init__(self, init_data):
+        init_data = BookElement._eval_file(init_data)    
         self.text = init_data["text"]
         self.source = init_data["source"]
+        super(Quote, self).__init__()
+
+    @classmethod
+    def get_keyword(self):
+        return "quote"
 
     def latex_output(self):
         return self.str_template.format(text=self.text, source=self.source)
@@ -146,6 +159,7 @@ class Picture(BookElement):
     """
 
     def __init__(self, init_data):
+        init_data = BookElement._eval_file(init_data)
         if init_data["align"] == "center":
             self.align = "\\centering"
         elif init_data["align"] == "right":
@@ -153,38 +167,55 @@ class Picture(BookElement):
         else:
             self.align = "\\raggedright"
         self.size = init_data["size"]
-        self.pic_path = os.path.join(cmd_options.in_path, init_data["pic_path"])
+        self.pic_path = os.path.join(os.path.dirname(cmd_options.in_path), init_data["pic_path"])
         self.pic_path = os.path.abspath(self.pic_path)
+        super(Picture, self).__init__()
+
+    @classmethod
+    def get_keyword(self):
+        return "pic"
 
     def latex_output(self):
         return Picture.str_template.format(align=self.align, size=self.size, path=self.pic_path)
 
 
+class Title(BookElement):
+    def __init__(self, init_data):
+        self.title = init_data
+        super(Title, self).__init__()
+        
+    @classmethod
+    def get_keyword(self):
+        return "title"
+
+    def latex_output(self):
+        return ""
+
+
 class Book(object):
     lytex_header = r"""
-        \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, final]{scrbook}
-        \usepackage[utf8]{inputenc}
-        \usepackage[T1]{fontenc}
-        \usepackage[ngerman, english]{babel}
-        \usepackage{microtype}
-        \usepackage{lmodern}
+        \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, final]{{scrbook}}
+        \usepackage[utf8]{{inputenc}}
+        \usepackage[T1]{{fontenc}}
+        \usepackage[ngerman, english]{{babel}}
+        \usepackage{{microtype}}
+        \usepackage{{lmodern}}
         \usepackage[
             pdftex,
             bookmarks, bookmarksopen, bookmarksopenlevel=1, bookmarksnumbered=true,
-            pdfpagemode={UseNone}, pdfpagelayout={TwoPageRight}, plainpages=false,
-            pdfkeywords={}, pdfsubject={}, pdftitle={}, pdfauthor={},
-        ]{hyperref}
-        \usepackage{graphicx}
-        \usepackage{songs}
-        \usepackage{limetusk}
-        \usepackage{scrhack}
-        \title{Tabbook}
-        \author{}
-        \lowertitleback{This document was created using LilyPond and {\LaTeX}/{\KOMAScript}.\\
+            pdfpagemode={{UseNone}}, pdfpagelayout={{TwoPageRight}}, plainpages=false,
+            pdfkeywords={{}}, pdfsubject={{}}, pdftitle={{}}, pdfauthor={{}},
+        ]{{hyperref}}
+        \usepackage{{graphicx}}
+        \usepackage{{songs}}
+        \usepackage{{limetusk}}
+        \title{{{title}}}
+        \author{{}}
+        \lowertitleback{{This document was created using LilyPond and {{\LaTeX}}/{{\KOMAScript}}.\\
             The content of this book is property of their respective owners,\\
             while the document itself is licensed under the Creative Commons BY-SA 3.0 license.
-        }
-        \begin{document}
+        }}
+        \begin{{document}}
             \maketitle
             \tableofcontents    
     """
@@ -196,6 +227,14 @@ class Book(object):
     def __init__(self, book_path):
         self.book_path = book_path
         self.content = self.parse_book()
+        self.title = "Songbook"
+        title_list = [e for e in self.content if isinstance(e, Title)]
+        if len(title_list) == 0:
+            print("Warning: Title not defined. Default used.")
+        else:
+            if len(title_list) != 1:
+                print("Warning: Multiple titles defines. First found used.")
+            self.title = title_list[0].title
 
     def parse_book(self):
         ret = []
@@ -208,20 +247,16 @@ class Book(object):
                 line = raw_line.split('#')[0]
                 if len(line) == 0:
                     continue
-                line = line.split(":")
-                if len(line) != 2:
-                    print("Error parsing line {line_no}: {line}".format(line_no=line_no, line=raw_line))
-                    continue
-                temp = BookElement.factory(line[0], line[1])
-                if temp:
-                    ret.append(temp)
-                else:
+                line = line.split(":", maxsplit=1)
+                try:
+                    ret.append(BookElement.factory(line[0], line[1]))
+                except (InvalidBookElementError, IndexError):
                     print("Error parsing line {line_no}: {line}".format(line_no=line_no, line=raw_line))
         return ret
-        
+
     def latex_output(self):
         ret = ""
-        ret += str(Book.lytex_header)
+        ret += Book.lytex_header.format(title=self.title)
         for e in self.content:
             ret += e.latex_output()
         ret += str(Book.lytex_footer)
@@ -233,33 +268,31 @@ def parse_cmd_options():
     parser = argparse.ArgumentParser()
     parser.add_argument('--in',   dest='in_path',  action='store', required=True)
     parser.add_argument('--out',  dest='out_path', action='store', required=True)
-    parser.add_argument('--book', dest='book',     action='store', required=True)
     cmd_options = parser.parse_args()
     
     
 def generate_lytex():
     os.makedirs(cmd_options.out_path, exist_ok=True)
-    book_path = os.path.join(cmd_options.in_path, cmd_options.book + ".book")
-    book = Book(book_path)
-    lytex_path = os.path.join(cmd_options.out_path, cmd_options.book + ".lytex")
+    book = Book(cmd_options.in_path)
+    lytex_path = os.path.join(cmd_options.out_path, book.title + ".lytex")
     with open(lytex_path, "w") as fd:
         fd.write(book.latex_output())
+    return book
 
 
-def generate_tex():
+def generate_tex(book):
     # copy sty first, since lilypond-book tries to guess the textwidth
     shutil.copy(LIMETUSK_STY, cmd_options.out_path)
-
     cmd = ["lilypond-book", "--pdf", "--loglevel=WARN", "--lily-loglevel=WARN", "--format=latex",
-           "--out="+cmd_options.out_path, os.path.join(cmd_options.out_path, cmd_options.book + ".lytex")]
+           "--out="+cmd_options.out_path, os.path.join(cmd_options.out_path, book.title + ".lytex")]
     subprocess.call(cmd)
 
 
-def compile_tex(draft=False):
+def compile_tex(book, draft=False):
     if draft:
-        cmd = ["pdflatex", "-draftmode", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", cmd_options.book + ".tex"]
+        cmd = ["pdflatex", "-draftmode", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", book.title + ".tex"]
     else:
-        cmd = ["pdflatex", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", cmd_options.book + ".tex"]
+        cmd = ["pdflatex", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", book.title + ".tex"]
     temp_env = os.environ.copy()
     temp_env['TEXINPUTS'] = cmd_options.out_path + ":" + temp_env.get('TEXINPUTS', '')
     subprocess.call(cmd, env=temp_env)
@@ -268,20 +301,17 @@ def compile_tex(draft=False):
 def main():
     parse_cmd_options()
     print("Parsing book and converting songs...")
-    generate_lytex()
+    book = generate_lytex()
     print("Generating book...")
-    generate_tex()
+    generate_tex(book)
     print("Compiling book...")
     print("Run 1...")
-    compile_tex(draft=True)
+    compile_tex(book, draft=True)
     print("Run 2...")
-    compile_tex(draft=True)
+    compile_tex(book, draft=True)
     print("Run 3...")
-    compile_tex(draft=False)
+    compile_tex(book, draft=False)
 
 
 if __name__ == "__main__":
     main()
-
-
-
