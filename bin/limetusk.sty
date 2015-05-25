@@ -1,24 +1,30 @@
 \NeedsTeXFormat{LaTeX2e}[1994/06/01]
 \ProvidesPackage{limetusk}[2015/05/23 LimeTusk]
 
-\RequirePackage{calc}
-\RequirePackage{color}
-\RequirePackage{etoolbox}
-\RequirePackage{float}
-\RequirePackage{scrhack}
-\RequirePackage{needspace}
-\RequirePackage{chngcntr}
+\RequirePackage{calc}       % for length calculation
+\RequirePackage{color}      % bg of song number
+\RequirePackage{etoolbox}   % patching of quote margins
+\RequirePackage{float}      % fquote
+\RequirePackage{scrhack}    % float does not play well with KOMA
+\RequirePackage{needspace}  % make sure the song header is not left alone on a site :(
+\RequirePackage{chngcntr}   % don't reset counter at start of chapter/...
 
+% Do not reset section counter at start of chapter
 \counterwithout{section}{chapter}
 
-\definecolor{shade}{gray}{.80}
+% song num bg color
+\definecolor{LT@songnumshade}{gray}{.80}
+
+% omit chapter number in section numbering
 \renewcommand{\thesection}{\arabic{section}}
 
+% adjust margins of quotes
 \patchcmd{\quote}{\rightmargin}{\leftmargin 8em \rightmargin}{}{}
 
-\newfloat{quote_float}{htb}{lop}
+% make quote floating, since it's intended as a filler
+\newfloat{LT@fquote_float}{htb}{lop}
 \newcommand{\fquote}[2]{%
-    \begin{quote_float}%
+    \begin{LT@fquote_float}%
         \centering%
         \rule{10cm}{.1pt}%
         \begin{quote}%
@@ -26,32 +32,37 @@
             \begin{flushright}\textsc{#2}\end{flushright}%
         \end{quote}%
         \rule{10cm}{.1pt}%
-    \end{quote_float}%
+    \end{LT@fquote_float}%
 }
 
-\newlength{\numwidth}
-\newlength{\titleheight}
-\newlength{\titledepth}
-\newsavebox{\boxnumraw}
-\newsavebox{\boxtitle}
-\newsavebox{\boxnum}
+\newlength{\LT@numwidth}
+\newlength{\LT@titleheight}
+\newlength{\LT@titledepth}
+\newsavebox{\LT@boxnumraw}
+\newsavebox{\LT@boxtitle}
+\newsavebox{\LT@boxnum}
 
+
+% song title format:
+% +-----+ #1
+% | 142 | #2                   #3
+% +-----+ #4                   #5
 \newcommand{\songheader}[5]{%
     \needspace{10\baselineskip}%
     \stepcounter{section}%
-    \settowidth{\numwidth}{\sffamily\bfseries\LARGE 000}%
-    \savebox{\boxtitle}{%
-        \begin{minipage}[t]{\textwidth - \numwidth - \fboxsep - \fboxsep - 2pt}%
+    \settowidth{\LT@numwidth}{\sffamily\bfseries\LARGE 000}%
+    \savebox{\LT@boxtitle}{%
+        \begin{minipage}[t]{\textwidth - \LT@numwidth - \fboxsep - \fboxsep - 2pt}%
             \sffamily\slshape\Large #1\\%
             \slshape\small #2 \hfill #3\\%
             \bfseries\small #4 \hfill #5%
         \end{minipage}%
     }%
-    \settoheight{\titleheight}{\usebox{\boxtitle}}%
-    \settodepth{\titledepth}{\usebox{\boxtitle}}%
-    \savebox{\boxnum}{%
-        \colorbox{shade}{%
-            \begin{minipage}[t][\titledepth + \titleheight]{\numwidth}%
+    \settoheight{\LT@titleheight}{\usebox{\LT@boxtitle}}%
+    \settodepth{\LT@titledepth}{\usebox{\LT@boxtitle}}%
+    \savebox{\LT@boxnum}{%
+        \colorbox{LT@songnumshade}{%
+            \begin{minipage}[t][\LT@titledepth + \LT@titleheight]{\LT@numwidth}%
                 \sffamily\bfseries\LARGE\thesection%
             \end{minipage}%
         }%
@@ -61,9 +72,9 @@
         \vspace{2pt}%
         \phantomsection%
         \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#2 - #1}}%
-        \usebox{\boxnum}%
+        \usebox{\LT@boxnum}%
         \hfill%
-        \usebox{\boxtitle}%
+        \usebox{\LT@boxtitle}%
         \vspace{2pt}%
     \end{minipage}%
 }

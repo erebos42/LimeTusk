@@ -1,20 +1,27 @@
 #!/usr/bin/python3
 # -*- encoding: utf-8 -*-
 
-#
-# TODO
-# - Add debug option for LaTeX and LilyPond
-# - Add logging or something for warnings/errors
-#
+"""Create modular and beautfiul songbooks using LilyPond and LaTeX."""
+
+__version__ = '0.1.0'
+
 
 import argparse
 import subprocess
 import ast
 import os
+import sys
 import shutil
+import logging
+import time
+
 
 TG2LY_BIN = "bin/tg2ly_0_3_0.jar"
 LIMETUSK_STY = "bin/limetusk.sty"
+
+
+cmd_options = None
+
 
 class InvalidBookElementError(Exception):
     pass
@@ -50,6 +57,9 @@ class Chapter(BookElement):
         self.text = init_data
         super(Chapter, self).__init__()
 
+    def __str__(self):
+        return "Chapter: {}".format(self.text)
+
     @classmethod
     def get_keyword(self):
         return "chapter"
@@ -76,6 +86,9 @@ class Song(BookElement):
             raise FileNotFoundError
         self.hash = self.convert()
         super(Song, self).__init__()
+
+    def __str__(self):
+        return "Song: {}".format(self.title)
 
     @classmethod
     def get_keyword(self):
@@ -119,6 +132,9 @@ class CSong(BookElement):
         self.content  = init_data["content"]
         super(CSong, self).__init__()
 
+    def __str__(self):
+        return "CSong: {}".format(self.title)
+
     @classmethod
     def get_keyword(self):
         return "csong"
@@ -141,6 +157,9 @@ class Quote(BookElement):
         self.text = init_data["text"]
         self.source = init_data["source"]
         super(Quote, self).__init__()
+
+    def __str__(self):
+        return "Quote: {}".format(self.source)
 
     @classmethod
     def get_keyword(self):
@@ -171,6 +190,9 @@ class Picture(BookElement):
         self.pic_path = os.path.abspath(self.pic_path)
         super(Picture, self).__init__()
 
+    def __str__(self):
+        return "Picture: {}".format(self.pic_path)
+
     @classmethod
     def get_keyword(self):
         return "pic"
@@ -183,7 +205,10 @@ class Title(BookElement):
     def __init__(self, init_data):
         self.title = init_data
         super(Title, self).__init__()
-        
+
+    def __str__(self):
+        return "Title: {}".format(self.title)
+
     @classmethod
     def get_keyword(self):
         return "title"
@@ -193,7 +218,7 @@ class Title(BookElement):
 
 
 class Book(object):
-    lytex_header = r"""
+    lytex_header_template = r"""
         \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, final]{{scrbook}}
         \usepackage[utf8]{{inputenc}}
         \usepackage[T1]{{fontenc}}
@@ -230,10 +255,10 @@ class Book(object):
         self.title = "Songbook"
         title_list = [e for e in self.content if isinstance(e, Title)]
         if len(title_list) == 0:
-            print("Warning: Title not defined. Default used.")
+            logging.warning("Title not defined. Default is being used.")
         else:
             if len(title_list) != 1:
-                print("Warning: Multiple titles defines. First found used.")
+                logging.warning("Multiple titles defines. First found used.")
             self.title = title_list[0].title
 
     def parse_book(self):
@@ -249,14 +274,16 @@ class Book(object):
                     continue
                 line = line.split(":", maxsplit=1)
                 try:
-                    ret.append(BookElement.factory(line[0], line[1]))
+                    e = BookElement.factory(line[0], line[1])
+                    ret.append(e)
+                    logging.debug(e)
                 except (InvalidBookElementError, IndexError):
-                    print("Error parsing line {line_no}: {line}".format(line_no=line_no, line=raw_line))
+                    logging.error('Invalid line {line_no}: "{line}"'.format(line_no=line_no, line=raw_line))
         return ret
 
     def latex_output(self):
         ret = ""
-        ret += Book.lytex_header.format(title=self.title)
+        ret += Book.lytex_header_template.format(title=self.title)
         for e in self.content:
             ret += e.latex_output()
         ret += str(Book.lytex_footer)
@@ -265,10 +292,15 @@ class Book(object):
 
 def parse_cmd_options():
     global cmd_options
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--in',   dest='in_path',  action='store', required=True)
-    parser.add_argument('--out',  dest='out_path', action='store', required=True)
+    parser = argparse.ArgumentParser(description='Create modular and beautfiul songbooks using LilyPond and LaTeX.')
+    parser.add_argument(      '--version',                  action='version',                               version='%(prog)s ' + __version__)
+    parser.add_argument('-v', '--verbose', dest='verbose',  action='count'     , default=0, required=False, help="Enable verbose building process.")
+    parser.add_argument('-d', '--draft',   dest='draft',    action='store_true',            required=False, help="Generate document in draft mode, to speed up testing.")
+    parser.add_argument(      '--in',      dest='in_path',  action='store',                 required=True,  help="Path to the book to compile.")
+    parser.add_argument(      '--out',     dest='out_path', action='store',                 required=True,  help="Path of the output directory. Will create dir if necesarry.")
     cmd_options = parser.parse_args()
+    
+    
     
     
 def generate_lytex():
@@ -283,34 +315,69 @@ def generate_lytex():
 def generate_tex(book):
     # copy sty first, since lilypond-book tries to guess the textwidth
     shutil.copy(LIMETUSK_STY, cmd_options.out_path)
-    cmd = ["lilypond-book", "--pdf", "--loglevel=WARN", "--lily-loglevel=WARN", "--format=latex",
-           "--out="+cmd_options.out_path, os.path.join(cmd_options.out_path, book.title + ".lytex")]
+    cmd  = ["lilypond-book", "--pdf"]
+    cmd += [] if cmd_options.verbose else ["--loglevel=WARN", "--lily-loglevel=WARN"]
+    cmd += ["--format=latex"]
+    cmd += ["--out="+cmd_options.out_path]
+    cmd += [os.path.join(cmd_options.out_path, book.title + ".lytex")]
     subprocess.call(cmd)
 
 
 def compile_tex(book, draft=False):
-    if draft:
-        cmd = ["pdflatex", "-draftmode", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", book.title + ".tex"]
-    else:
-        cmd = ["pdflatex", "-output-directory=" + cmd_options.out_path, "-interaction=batchmode", book.title + ".tex"]
+    cmd  = ["pdflatex"]
+    cmd += ["-draftmode"] if draft else []
+    cmd += ["-interaction=nonstopmode"]
+    cmd += ["-output-directory=" + cmd_options.out_path]
+    cmd += [book.title + ".tex"]
     temp_env = os.environ.copy()
     temp_env['TEXINPUTS'] = cmd_options.out_path + ":" + temp_env.get('TEXINPUTS', '')
-    subprocess.call(cmd, env=temp_env)
+    if cmd_options.verbose == 2:
+        subprocess.call(cmd, env=temp_env)
+    else:
+        subprocess.call(cmd, stdout=subprocess.DEVNULL, env=temp_env)
+
+
+def check_env():
+    cmd  = ["lilypond-book", "--version"]
+    try:
+        subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        sys.exit("lilypond-book not found!")
+    cmd  = ["pdflatex", "--version"]
+    try:
+        subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        sys.exit("pdflatex not found!")
+    cmd = ["java", "-jar", TG2LY_BIN, "--version"]
+    try:
+        ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if ret != 0:
+            sys.exit("tg2ly not found!")
+    except FileNotFoundError:
+        sys.exit("java not found!")
 
 
 def main():
     parse_cmd_options()
-    print("Parsing book and converting songs...")
+
+    log_level = logging.INFO
+    if cmd_options.verbose:
+        log_level = logging.DEBUG
+    logging.basicConfig(format='%(levelname)s:%(message)s', level=log_level)
+    run_time = time.time()
+
+    check_env()
+
+    logging.info("Parsing book and converting songs...")
     book = generate_lytex()
-    print("Generating book...")
+    logging.info("Generating book...")
     generate_tex(book)
-    print("Compiling book...")
-    print("Run 1...")
+    logging.info("Compiling book...")
     compile_tex(book, draft=True)
-    print("Run 2...")
-    compile_tex(book, draft=True)
-    print("Run 3...")
-    compile_tex(book, draft=False)
+    if not cmd_options.draft:
+        compile_tex(book, draft=False)
+    
+    logging.info("Finished in {run_time:.2f} seconds".format(run_time=(time.time() - run_time)))
 
 
 if __name__ == "__main__":
