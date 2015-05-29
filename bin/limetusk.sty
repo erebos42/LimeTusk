@@ -68,13 +68,36 @@
         }%
     }%
     \noindent%
+    \markright{\thesection. #1}% apparently this does not work inside a minipage?!
     \begin{minipage}{\textwidth}%
         \vspace{2pt}%
         \phantomsection%
-        \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#2 - #1}}%
+        \ifstrempty{#2}{%
+            \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#1}}%
+        }{%
+            \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#2 - #1}}%
+        }%
         \usebox{\LT@boxnum}%
         \hfill%
         \usebox{\LT@boxtitle}%
         \vspace{2pt}%
     \end{minipage}%
+}
+
+\newcommand{\csongtoc}[2]{%
+    \stepcounter{section}%
+    \setcounter{songnum}{\thesection}%
+    \phantomsection%
+    \markright{\thesection. #1}%
+    \ifstrempty{#2}{%
+        \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#1}}%
+    }{%
+        \addcontentsline{toc}{section}{\protect\numberline{\thesection}{#2 - #1}}%
+    }%
+}
+
+\newcommand{\ltchapter}[1]{%
+    \chapter*{#1}%
+    \markboth{#1}{}%
+    \addcontentsline{toc}{chapter}{#1}%
 }

@@ -5,6 +5,14 @@
 
 __version__ = '0.1.0'
 
+# TODO
+# - draft mode
+# - check latex packages by compiling minimal document
+# - move generation stuff into separate class
+# - Fix escaping of special characters. Either input in LaTeX format, or utf-8 to LaTeX converter (must handle csong commands)
+# - rewrite the 'get default infos from dict' stuff.
+# - group songs environments, so the page break is better
+
 
 import argparse
 import subprocess
@@ -23,6 +31,28 @@ LIMETUSK_STY = "bin/limetusk.sty"
 cmd_options = None
 
 
+def escape_latex(s):
+    """Borrowed from PyLaTeX (MIT license). Thanks.
+       https://github.com/JelteF/PyLaTeX/blob/master/pylatex/utils.py
+    """
+    _latex_special_chars = {
+        '&':  r'\&',
+        '%':  r'\%',
+        '$':  r'\$',
+        '#':  r'\#',
+        '_':  r'\_',
+        '{':  r'\{',
+        '}':  r'\}',
+        '~':  r'\textasciitilde{}',
+        '^':  r'\^{}',
+        '\\': r'\textbackslash{}',
+        '\n': r'\\',
+        '-':  r'{-}',
+        '\xA0': '~',  # Non-breaking space
+    }    
+    return ''.join(_latex_special_chars.get(c, c) for c in s)
+
+
 class InvalidBookElementError(Exception):
     pass
 
@@ -37,8 +67,12 @@ class BookElement(object):
     @classmethod
     def _eval_file(cls, path):
         path = os.path.join(os.path.dirname(cmd_options.in_path), path)
+        # TODO: what if file does not exist?!
         with open(path, 'r') as fd:
-            return ast.literal_eval(fd.read().strip())
+            try:
+                return ast.literal_eval(fd.read().strip())
+            except SyntaxError:
+                raise InvalidBookElementError
 
     @classmethod
     def factory(cls, object_str, init_data):
@@ -49,8 +83,7 @@ class BookElement(object):
 
 class Chapter(BookElement):
     str_template = r"""
-        \chapter*{{{chapter_name}}}
-        \addcontentsline{{toc}}{{chapter}}{{{chapter_name}}}
+        \ltchapter{{{chapter_name}}}
     """
 
     def __init__(self, init_data):
@@ -74,36 +107,50 @@ class Song(BookElement):
         \lilypondfile{{{path}}}
     """
 
-    def __init__(self, init_data):
-        init_data = BookElement._eval_file(init_data)
-        self.artist   = init_data["artist"]
-        self.title    = init_data["title"]
-        self.album    = init_data["album"]
-        self.tuning   = init_data["tuning"]
-        self.composer = init_data["composer"]
-        self.file     = os.path.join(os.path.dirname(cmd_options.in_path), init_data["tg_file"])
-        if not os.path.exists(self.file):
+    default = {"artist": "",
+               "title": "",
+               "album": "",
+               "tuning": "",
+               "composer": "",
+               "tg_file": ""}
+
+    def __init__(self, init_path):
+        init_data = BookElement._eval_file(init_path)
+        
+        missing_keys = Song.default.keys() - init_data.keys()
+        unused_keys  = init_data.keys() - Song.default.keys()
+        if missing_keys or unused_keys:
+            logging.warning("Malformed input: " + str(init_path))
+        if missing_keys:
+            logging.warning("Missing keys: " + str(missing_keys))
+        if unused_keys:
+            logging.warning("Unused keys: " + str(unused_keys))
+        
+        self.data = Song.default.copy()
+        self.data.update(init_data)
+        self.data["tg_file"] = os.path.join(os.path.dirname(cmd_options.in_path), self.data["tg_file"])
+        if not os.path.exists(self.data["tg_file"]):
             raise FileNotFoundError
-        self.hash = self.convert()
+        self.data["hash"] = self.convert()
         super(Song, self).__init__()
 
     def __str__(self):
-        return "Song: {}".format(self.title)
+        return "Song: {}".format(self.data["title"])
 
     @classmethod
     def get_keyword(self):
         return "song"
 
     def latex_output(self):
-        return self.str_template.format(artist   = self.artist,
-                                         title    = self.title,
-                                         tuning   = self.tuning,
-                                         album    = self.album,
-                                         composer = self.composer,
-                                         path     = os.path.join(cmd_options.out_path, self.hash + ".ly"))
+        return self.str_template.format(artist   = escape_latex(self.data["artist"]),
+                                         title    = escape_latex(self.data["title"]),
+                                         tuning   = escape_latex(self.data["tuning"]),
+                                         album    = escape_latex(self.data["album"]),
+                                         composer = escape_latex(self.data["composer"]),
+                                         path     = os.path.join(cmd_options.out_path, self.data["hash"] + ".ly"))
 
     def convert(self):
-        cmd = ["java", "-jar", TG2LY_BIN, "--in", self.file, "--out", cmd_options.out_path]
+        cmd = ["java", "-jar", TG2LY_BIN, "--in", self.data["tg_file"], "--out", cmd_options.out_path]
         out = subprocess.check_output(cmd)
         out = out.decode('utf-8').replace('\n', '')
         return out
@@ -112,6 +159,7 @@ class Song(BookElement):
 class CSong(BookElement):
     str_template = r"""
         \begin{{songs}}{{}}
+        \csongtoc{{{title}}}{{{artist}}}
         \beginsong{{{title}}}[
           by={{{artist}}},
           cr={{{composer}}},
@@ -122,51 +170,79 @@ class CSong(BookElement):
         \endsong
         \end{{songs}}
     """
+    
+    default = {"artist": "",
+               "title": "",
+               "tuning": "",
+               "composer": "",
+               "album": "",
+               "year": "",
+               "content": ""}
 
-    def __init__(self, init_data):
-        init_data = BookElement._eval_file(init_data)
-        self.artist   = init_data["artist"]
-        self.title    = init_data["title"]
-        self.tuning   = init_data["tuning"]
-        self.composer = init_data["composer"]
-        self.content  = init_data["content"]
+    def __init__(self, init_path):
+        init_data = BookElement._eval_file(init_path)
+        
+        missing_keys = CSong.default.keys() - init_data.keys()
+        unused_keys  = init_data.keys() - CSong.default.keys()
+        if missing_keys or unused_keys:
+            logging.warning("Malformed input: " + str(init_path))
+        if missing_keys:
+            logging.warning("Missing keys: " + str(missing_keys))
+        if unused_keys:
+            logging.warning("Unused keys: " + str(unused_keys))
+        
+        self.data = CSong.default.copy()
+        self.data.update(init_data)
         super(CSong, self).__init__()
 
     def __str__(self):
-        return "CSong: {}".format(self.title)
+        return "CSong: {}".format(self.data["title"])
 
     @classmethod
     def get_keyword(self):
         return "csong"
 
     def latex_output(self):
-        return self.str_template.format(artist   = self.artist,
-                                         title    = self.title,
-                                         tuning   = self.tuning,
-                                         composer = self.composer,
-                                         content  = self.content)
+        return self.str_template.format(artist   = escape_latex(self.data["artist"]),
+                                         title    = escape_latex(self.data["title"]),
+                                         tuning   = escape_latex(self.data["tuning"]),
+                                         composer = escape_latex(self.data["composer"]),
+                                         content  = self.data["content"])
 
 
 class Quote(BookElement):
     str_template = r"""
         \fquote{{{text}}}{{{source}}}
     """
+    
+    default = {"text": "",
+               "source": ""}
 
-    def __init__(self, init_data):
-        init_data = BookElement._eval_file(init_data)    
-        self.text = init_data["text"]
-        self.source = init_data["source"]
+    def __init__(self, init_path):
+        init_data = BookElement._eval_file(init_path)    
+        
+        missing_keys = Quote.default.keys() - init_data.keys()
+        unused_keys  = init_data.keys() - Quote.default.keys()
+        if missing_keys or unused_keys:
+            logging.warning("Malformed input: " + str(init_path))
+        if missing_keys:
+            logging.warning("Missing keys: " + str(missing_keys))
+        if unused_keys:
+            logging.warning("Unused keys: " + str(unused_keys))
+        
+        self.data = Quote.default.copy()
+        self.data.update(init_data)
         super(Quote, self).__init__()
 
     def __str__(self):
-        return "Quote: {}".format(self.source)
+        return "Quote: {}".format(self.data["source"])
 
     @classmethod
     def get_keyword(self):
         return "quote"
 
     def latex_output(self):
-        return self.str_template.format(text=self.text, source=self.source)
+        return self.str_template.format(text=self.data["text"], source=self.data["source"])
 
 
 class Picture(BookElement):
@@ -177,28 +253,44 @@ class Picture(BookElement):
         \end{{figure}}
     """
 
-    def __init__(self, init_data):
-        init_data = BookElement._eval_file(init_data)
-        if init_data["align"] == "center":
-            self.align = "\\centering"
-        elif init_data["align"] == "right":
-            self.align = "\\raggedleft"
+    default = {"align": "",
+               "size": "",
+               "pic_path": ""}
+
+    def __init__(self, init_path):
+        init_data = BookElement._eval_file(init_path)    
+        
+        missing_keys = Picture.default.keys() - init_data.keys()
+        unused_keys  = init_data.keys() - Picture.default.keys()
+        if missing_keys or unused_keys:
+            logging.warning("Malformed input: " + str(init_path))
+        if missing_keys:
+            logging.warning("Missing keys: " + str(missing_keys))
+        if unused_keys:
+            logging.warning("Unused keys: " + str(unused_keys))
+        
+        self.data = Picture.default.copy()
+        self.data.update(init_data)
+        
+        if self.data["align"] == "center":
+            self.data["align"] = "\\centering"
+        elif self.data["align"] == "right":
+            self.data["align"] = "\\raggedleft"
         else:
-            self.align = "\\raggedright"
-        self.size = init_data["size"]
-        self.pic_path = os.path.join(os.path.dirname(cmd_options.in_path), init_data["pic_path"])
-        self.pic_path = os.path.abspath(self.pic_path)
+            self.data["align"] = "\\raggedright"
+        self.data["pic_path"] = os.path.join(os.path.dirname(cmd_options.in_path), self.data["pic_path"])
+        self.data["pic_path"] = os.path.abspath(self.data["pic_path"])
         super(Picture, self).__init__()
 
     def __str__(self):
-        return "Picture: {}".format(self.pic_path)
+        return "Picture: {}".format(self.data["pic_path"])
 
     @classmethod
     def get_keyword(self):
         return "pic"
 
     def latex_output(self):
-        return Picture.str_template.format(align=self.align, size=self.size, path=self.pic_path)
+        return Picture.str_template.format(align=self.data["align"], size=self.data["size"], path=self.data["pic_path"])
 
 
 class Title(BookElement):
@@ -232,7 +324,7 @@ class Book(object):
             pdfkeywords={{}}, pdfsubject={{}}, pdftitle={{}}, pdfauthor={{}},
         ]{{hyperref}}
         \usepackage{{graphicx}}
-        \usepackage{{songs}}
+        \usepackage[nopdfindex]{{songs}}
         \usepackage{{limetusk}}
         \title{{{title}}}
         \author{{}}
@@ -282,9 +374,12 @@ class Book(object):
         return ret
 
     def latex_output(self):
+        last_item = None
+    
         ret = ""
         ret += Book.lytex_header_template.format(title=self.title)
         for e in self.content:
+        
             ret += e.latex_output()
         ret += str(Book.lytex_footer)
         return ret
@@ -299,8 +394,6 @@ def parse_cmd_options():
     parser.add_argument(      '--in',      dest='in_path',  action='store',                 required=True,  help="Path to the book to compile.")
     parser.add_argument(      '--out',     dest='out_path', action='store',                 required=True,  help="Path of the output directory. Will create dir if necesarry.")
     cmd_options = parser.parse_args()
-    
-    
     
     
 def generate_lytex():

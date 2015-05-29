@@ -16,7 +16,6 @@ Create modular and beautfiul songbooks using LilyPond and LaTeX.
           \override TabVoice.TabNoteHead.details.repeat-tied-properties.note-head-visible = ##f
           \override TabVoice.TabNoteHead.details.repeat-tied-properties.parenthesize = ##f
       }
-* Support for chorded songs based on the "songs" LaTeX package
 * Generator midi (using lilypond) and link into pdf document
 
 

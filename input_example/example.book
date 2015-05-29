@@ -8,6 +8,20 @@ chapter:Example Chapter 1
     quote:quotes/example.quote
     pic:pics/example.pic
     csong:songs/example.csong
+    song:songs/example.song
+    song:songs/example.song
+    song:songs/example.song
+    song:songs/example.song    
+    quote:quotes/example.quote
+    pic:pics/example.pic
+    csong:songs/example.csong
+    song:songs/example.song
+    song:songs/example.song
+    song:songs/example.song
+    song:songs/example.song    
+    quote:quotes/example.quote
+    pic:pics/example.pic
+    csong:songs/example.csong
 
 chapter:Example Chapter 2
     song:songs/example.song
