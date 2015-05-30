@@ -12,6 +12,7 @@ __version__ = '0.1.0'
 # - Fix escaping of special characters. Either input in LaTeX format, or utf-8 to LaTeX converter (must handle csong commands)
 # - rewrite the 'get default infos from dict' stuff.
 # - group songs environments, so the page break is better
+# - write to tempdir if out not set
 
 
 import argparse
@@ -24,7 +25,7 @@ import logging
 import time
 
 
-TG2LY_BIN = "bin/tg2ly_0_3_0.jar"
+TG2LY_BIN = "bin/tg2ly_0_3_1.jar"
 LIMETUSK_STY = "bin/limetusk.sty"
 
 
@@ -102,8 +103,15 @@ class Chapter(BookElement):
 
 
 class Song(BookElement):
+    # TODO: this should not be two templates. But the trailing % of the songheader is kind of annoying...
     str_template = r"""
         \songheader{{{title}}}{{{artist}}}{{{album}}}{{{tuning}}}{{{composer}}}
+        \lilypondfile{{{path}}}
+    """
+    
+    str_midi_template = r"""
+        \songheader{{{title}}}{{{artist}}}{{{album}}}{{{tuning}}}{{{composer}}}%
+        \marginpar{{\attachfile[mimetype=audio/midi, print=false]{{{midi_file}}}}}
         \lilypondfile{{{path}}}
     """
 
@@ -132,6 +140,8 @@ class Song(BookElement):
         if not os.path.exists(self.data["tg_file"]):
             raise FileNotFoundError
         self.data["hash"] = self.convert()
+        if cmd_options.midi:
+            self.generate_midi()
         super(Song, self).__init__()
 
     def __str__(self):
@@ -142,12 +152,38 @@ class Song(BookElement):
         return "song"
 
     def latex_output(self):
-        return self.str_template.format(artist   = escape_latex(self.data["artist"]),
-                                         title    = escape_latex(self.data["title"]),
-                                         tuning   = escape_latex(self.data["tuning"]),
-                                         album    = escape_latex(self.data["album"]),
-                                         composer = escape_latex(self.data["composer"]),
-                                         path     = os.path.join(cmd_options.out_path, self.data["hash"] + ".ly"))
+        if cmd_options.midi:
+            template = self.str_midi_template
+        else:
+            template = self.str_template
+    
+        return template.format(artist    = escape_latex(self.data["artist"]),
+                                title     = escape_latex(self.data["title"]),
+                                tuning    = escape_latex(self.data["tuning"]),
+                                album     = escape_latex(self.data["album"]),
+                                composer  = escape_latex(self.data["composer"]),
+                                midi_file = os.path.join(cmd_options.out_path, self.data["hash"] + ".midi"),
+                                path      = os.path.join(cmd_options.out_path, self.data["hash"] + ".ly"))
+
+
+    def generate_midi(self):
+        """Make and change copy of .ly-file for midi generation. This is necessary,
+        because lilypond-book has this crazy naming scheme, so there is basically
+        no way of finding the generated midi files. So we insert the \midi-block
+        by hand and compile only for the midi file again.
+        """
+        rel_path  = os.path.join(cmd_options.out_path, self.data["hash"])
+        ly_path   = rel_path + ".ly"
+        m_ly_path = rel_path + "_midi.ly"
+        with open(ly_path, "r") as fd_r, open(m_ly_path, "w") as fd_w:
+            ly_data = fd_r.read().replace("% __MAGIC_MIDI_VS_LAYOUT_MARKER__", "\\midi {}")
+            fd_w.write(ly_data)
+        cmd  = ["lilypond"]
+        if not cmd_options.verbose == 2:
+            cmd += ["--loglevel=NONE"]
+        cmd += ["-o", rel_path, m_ly_path]
+        out = subprocess.check_output(cmd)
+        os.remove(m_ly_path)
 
     def convert(self):
         cmd = ["java", "-jar", TG2LY_BIN, "--in", self.data["tg_file"], "--out", cmd_options.out_path]
@@ -310,6 +346,7 @@ class Title(BookElement):
 
 
 class Book(object):
+    # TODO: attachfile only needed, if --midi is set
     lytex_header_template = r"""
         \documentclass[a4paper, twoside, DIV=15, cleardoublepage=empty, final]{{scrbook}}
         \usepackage[utf8]{{inputenc}}
@@ -317,15 +354,16 @@ class Book(object):
         \usepackage[ngerman, english]{{babel}}
         \usepackage{{microtype}}
         \usepackage{{lmodern}}
+        \usepackage{{graphicx}}
+        \usepackage[nopdfindex]{{songs}}
+        \usepackage{{limetusk}}
         \usepackage[
             pdftex,
             bookmarks, bookmarksopen, bookmarksopenlevel=1, bookmarksnumbered=true,
             pdfpagemode={{UseNone}}, pdfpagelayout={{TwoPageRight}}, plainpages=false,
             pdfkeywords={{}}, pdfsubject={{}}, pdftitle={{}}, pdfauthor={{}},
         ]{{hyperref}}
-        \usepackage{{graphicx}}
-        \usepackage[nopdfindex]{{songs}}
-        \usepackage{{limetusk}}
+        \usepackage{{attachfile}}
         \title{{{title}}}
         \author{{}}
         \lowertitleback{{This document was created using LilyPond and {{\LaTeX}}/{{\KOMAScript}}.\\
@@ -393,7 +431,9 @@ def parse_cmd_options():
     parser.add_argument('-d', '--draft',   dest='draft',    action='store_true',            required=False, help="Generate document in draft mode, to speed up testing.")
     parser.add_argument(      '--in',      dest='in_path',  action='store',                 required=True,  help="Path to the book to compile.")
     parser.add_argument(      '--out',     dest='out_path', action='store',                 required=True,  help="Path of the output directory. Will create dir if necesarry.")
+    parser.add_argument(      '--midi',    dest='midi',     action='store_true',            required=False, help="Generate midi files for songs and attach them in the output file. Note: attachments in pdfs aren't very well supported by many viewers.")
     cmd_options = parser.parse_args()
+    # TODO: Namespace to set/dict -> vars(cmd_options)
     
     
 def generate_lytex():
@@ -436,6 +476,11 @@ def check_env():
         subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
         sys.exit("lilypond-book not found!")
+    cmd  = ["lilypond", "--version"]
+    try:
+        subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        sys.exit("lilypond not found!")
     cmd  = ["pdflatex", "--version"]
     try:
         subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
