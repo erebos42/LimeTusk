@@ -3,7 +3,6 @@ title:Example Book
 chapter:Example Chapter 1
     song:songs/example.song    
     quote:quotes/example.quote
+    quote:quotes/example2.quote    
     pic:pics/example.pic
     csong:songs/example.csong
-
-

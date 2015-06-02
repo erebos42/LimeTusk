@@ -10,7 +10,7 @@ class InvalidBookElementError(Exception):
     pass
 
 class BookElement(object):
-    def latex_output(self):
+    def generate(self):
         raise NotImplementedError("please implement!")
 
     @classmethod
@@ -40,7 +40,7 @@ class Chapter(BookElement):
 
     def __init__(self, base_path, options, init_data):
         self.text = init_data
-        super(Chapter, self).__init__()
+        super().__init__()
 
     def __str__(self):
         return "Chapter: {}".format(self.text)
@@ -49,7 +49,7 @@ class Chapter(BookElement):
     def get_keyword(self):
         return "chapter"
 
-    def latex_output(self):
+    def generate(self):
         return self.str_template.format(chapter_name=self.text)
 
 
@@ -91,10 +91,7 @@ class Song(BookElement):
         self.data["tg_file"] = os.path.join(base_path, self.data["tg_file"])
         if not os.path.exists(self.data["tg_file"]):
             raise FileNotFoundError
-        self.data["hash"] = self.convert()
-        if self.options.midi:
-            self.generate_midi()
-        super(Song, self).__init__()
+        super().__init__()
 
     def __str__(self):
         return "Song: {}".format(self.data["title"])
@@ -103,7 +100,11 @@ class Song(BookElement):
     def get_keyword(self):
         return "song"
 
-    def latex_output(self):
+    def generate(self):
+        self.data["hash"] = self.convert()
+        if self.options.midi:
+            self.generate_midi()
+
         if self.options.midi:
             template = self.str_midi_template
         else:
@@ -178,7 +179,7 @@ class CSong(BookElement):
         
         self.data = CSong.default.copy()
         self.data.update(init_data)
-        super(CSong, self).__init__()
+        super().__init__()
 
     def __str__(self):
         return "CSong: {}".format(self.data["title"])
@@ -197,7 +198,7 @@ class CSong(BookElement):
         return r"""\end{songs}
                 """
 
-    def latex_output(self):
+    def generate(self):
         return self.str_template.format(artist   = escape_latex(self.data["artist"]),
                                          title    = escape_latex(self.data["title"]),
                                          tuning   = escape_latex(self.data["tuning"]),
@@ -227,7 +228,7 @@ class Quote(BookElement):
         
         self.data = Quote.default.copy()
         self.data.update(init_data)
-        super(Quote, self).__init__()
+        super().__init__()
 
     def __str__(self):
         return "Quote: {}".format(self.data["source"])
@@ -236,7 +237,7 @@ class Quote(BookElement):
     def get_keyword(self):
         return "quote"
 
-    def latex_output(self):
+    def generate(self):
         return self.str_template.format(text=self.data["text"], source=self.data["source"])
 
 
@@ -275,7 +276,7 @@ class Picture(BookElement):
             self.data["align"] = "\\raggedright"
         self.data["pic_path"] = os.path.join(base_path, self.data["pic_path"])
         self.data["pic_path"] = os.path.abspath(self.data["pic_path"])
-        super(Picture, self).__init__()
+        super().__init__()
 
     def __str__(self):
         return "Picture: {}".format(self.data["pic_path"])
@@ -284,14 +285,14 @@ class Picture(BookElement):
     def get_keyword(self):
         return "pic"
 
-    def latex_output(self):
+    def generate(self):
         return Picture.str_template.format(align=self.data["align"], size=self.data["size"], path=self.data["pic_path"])
 
 
 class Title(BookElement):
     def __init__(self, base_path, options, init_data):
         self.title = init_data
-        super(Title, self).__init__()
+        super().__init__()
 
     def __str__(self):
         return "Title: {}".format(self.title)
@@ -300,5 +301,5 @@ class Title(BookElement):
     def get_keyword(self):
         return "title"
 
-    def latex_output(self):
+    def generate(self):
         return ""

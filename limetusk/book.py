@@ -83,7 +83,7 @@ class Book(object):
                     logging.error('Invalid line {line_no}: "{line}"'.format(line_no=line_no, line=raw_line))
         return ret
 
-    def latex_output(self):
+    def generate(self):
         # TODO: change begin_env/end_env stuff more generally
         last_item = None
         ret = ""
@@ -91,7 +91,7 @@ class Book(object):
         for e in self.content:
             if (not isinstance(last_item, CSong)) and isinstance(e, CSong):
                 ret += CSong.begin_env()
-            ret += e.latex_output()
+            ret += e.generate()
             if isinstance(last_item, CSong) and (not isinstance(e, CSong)):
                 ret += CSong.end_env()
             last_item = e

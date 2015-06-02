@@ -11,20 +11,20 @@ class BookBuilder(object):
         self.options = options
 
     def build(self):
-        logging.info("Parsing book and converting songs...")
-        self.generate_lytex()
         logging.info("Generating book...")
-        self.generate_tex()
+        self.generate_lytex()
+
         logging.info("Compiling book...")
+        self.generate_tex()
         self.compile_tex(draft=True)
         if not self.options.draft:
             self.compile_tex(draft=False)
 
     def generate_lytex(self):
-        #os.makedirs(self.options.out_path, exist_ok=True)
+        os.makedirs(self.options.out_path, exist_ok=True)
         lytex_path = os.path.join(self.options.out_path, self.book.title + ".lytex")
         with open(lytex_path, "w") as fd:
-            fd.write(self.book.latex_output())
+            fd.write(self.book.generate())
 
     def generate_tex(self):
         # copy sty first, since lilypond-book tries to guess the textwidth

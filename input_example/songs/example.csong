@@ -1,6 +1,8 @@
 {
     "artist":   "Example Artist",
     "title":    "Example Song 2",
+    "year":     "",
+    "album":    "",
     "tuning":   "Tuning: EAdgbe'",
     "composer": "",
     "content":  r"""

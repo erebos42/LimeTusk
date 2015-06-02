@@ -31,21 +31,21 @@ def check_env():
     try:
         subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
-        sys.exit("lilypond-book not found!")
+        raise FileNotFoundError("lilypond-book not found!")
     cmd  = ["lilypond", "--version"]
     try:
         subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
-        sys.exit("lilypond not found!")
+        raise FileNotFoundError("lilypond not found!")
     cmd  = ["pdflatex", "--version"]
     try:
         subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
-        sys.exit("pdflatex not found!")
+        raise FileNotFoundError("pdflatex not found!")
     cmd = ["java", "-jar", TG2LY_BIN, "--version"]
     try:
         ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if ret != 0:
-            sys.exit("tg2ly not found!")
+            raise FileNotFoundError("tg2ly not found!")
     except FileNotFoundError:
-        sys.exit("java not found!")
+        raise FileNotFoundError("java not found!")
